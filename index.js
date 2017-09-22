@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const passwordHash = require('password-hash');
 const jwt = require('jsonwebtoken');
+const expressJwt = require('express-jwt');
 const ClienteSchema = require('./schemas/cliente');
 // const vendedoresController = require('./controllers/vendedores');
 // const loginController = require('./controllers/login');
@@ -50,6 +51,26 @@ app.post('/login', (request, response) => {
         }
         response.sendStatus(403);
     });
+});
+app.post('/simulacao', expressJwt({secret: 'insomnia'}), (request, response) => {
+    let valor = request.body.valor;
+    let parcelas = request.body.parcelas;
+
+    console.log(valor);
+    console.log(parcelas);
+
+    if(parcelas === 0 || valor < 0 || isNaN(valor) | isNaN(parcelas)){
+        response.sendStatus(403);
+        return;
+    }else if(parcelas > 6){ //validar tbm a renda do cliente
+        response.sendStatus(401);
+        return;
+    }else{
+        valorParcela = {
+            parcela: valor/parcelas
+        };
+        response.status(200).send(valorParcela);
+    }
 });
 
 //servidor
