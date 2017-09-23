@@ -26,6 +26,15 @@ mongoose.connect("mongodb://localhost/emprestimo");
 app.get('/hello', (request, response) => {
     response.status(200).send("Hello world!");
 });
+app.get('/cliente', (request, response) => {
+    ClienteSchema.find((error, clientes) => {
+        if(error) {
+            response.sendStatus(400)
+            return;
+        };
+        response.status(200).send(clientes);
+    });
+});
 app.post('/cliente', (request, response) => {
     let cliente = new ClienteSchema(request.body);
     cliente.senha = passwordHash.generate(request.body.senha);
@@ -42,7 +51,6 @@ app.post('/login', (request, response) => {
         email: request.body.email
     };
     ClienteSchema.findOne(query, (error, cliente) => {
-        console.log(cliente);
         if(cliente && passwordHash.verify(request.body.senha, cliente.senha)) {
             const token = jwt.sign({_id: cliente._id}, 'insomnia');
             response.set('Authorization', token);
@@ -55,23 +63,83 @@ app.post('/login', (request, response) => {
 app.post('/simulacao', expressJwt({secret: 'insomnia'}), (request, response) => {
     let valor = request.body.valor;
     let parcelas = request.body.parcelas;
+    let idUsuario = request.user._id;
+    let taxaJuros = 0.08; //juros simples
 
-    console.log(valor);
-    console.log(parcelas);
-
-    if(parcelas === 0 || valor < 0 || isNaN(valor) | isNaN(parcelas)){
-        response.sendStatus(403);
-        return;
-    }else if(parcelas > 6){ //validar tbm a renda do cliente
-        response.sendStatus(401);
-        return;
-    }else{
-        valorParcela = {
-            parcela: valor/parcelas
-        };
-        response.status(200).send(valorParcela);
-    }
+    ClienteSchema.findById(idUsuario, (error, cliente) => {
+        if(error) {response.sendStatus(400); return;}
+        let renda = cliente.renda;
+        if(parcelas <= 0 || valor < 0 || isNaN(valor) | isNaN(parcelas)){
+            response.sendStatus(403);
+            return;
+        }else if(parcelas > 6 || valor > renda * 0.30){
+            response.sendStatus(401);
+            return;
+        }else{
+            valorParcela = {
+                parcela: (valor*(1 + taxaJuros))/parcelas
+            };
+            response.status(200).send(valorParcela);
+        }
+    });
 });
+app.post('/emprestimo', expressJwt({secret: 'insomnia'}), (request, response) => {
+    let valor = request.body.valor;
+    let parcelas = request.body.parcelas;
+    let idUsuario = request.user._id;
+    let taxaJuros = 0.08; //juros simples
+
+    ClienteSchema.findById(idUsuario, (error, cliente) => {
+        if(error) {response.sendStatus(400); return;}
+        let renda = cliente.renda;
+        if(parcelas <= 0 || valor < 0 || isNaN(valor) | isNaN(parcelas)){
+            response.sendStatus(403);
+            return;
+        }else if(parcelas > 6 || valor > renda * 0.30){
+            response.sendStatus(401);
+            return;
+        }else{
+            let valorParcela = {
+                parcela: (valor*(1 + taxaJuros))/parcelas
+            };
+            let dadosEmprestimo = {
+                valor: valor,
+                parcelas: parcelas,
+                data: new Date()
+            }
+            cliente.emprestimos = dadosEmprestimo;
+            ClienteSchema.findByIdAndUpdate(idUsuario, cliente, (error, resposta) => {
+                if(error){
+                    response.sendStatus(400);
+                    return;
+                }
+                response.status(200).send(valorParcela);
+            });
+        }
+    });
+});
+
+let SimularEmprestimo = (request, response) => {
+    let valor = request.body.valor;
+    let parcelas = request.body.parcelas;
+    let idUsuario = request.user._id;
+    let taxaJuros = 0.08; //juros simples
+
+    ClienteSchema.findById(idUsuario, (error, cliente) => {
+        if(error) response.sendStatus(400);
+        let renda = cliente.renda;
+        if(parcelas <= 0 || valor < 0 || isNaN(valor) | isNaN(parcelas)){
+            return response.sendStatus(403);
+        }else if(parcelas > 6 || valor > renda * 0.30){
+            return response.sendStatus(401);
+        }else{
+            valorParcela = {
+                parcela: (valor*(1 + taxaJuros))/parcelas
+            };
+            return response.status(200).send(valorParcela);
+        }
+    });
+}
 
 //servidor
 app.listen(80, () => {
