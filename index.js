@@ -6,18 +6,12 @@ const passwordHash = require('password-hash');
 const jwt = require('jsonwebtoken');
 const expressJwt = require('express-jwt');
 const ClienteSchema = require('./schemas/cliente');
-// const vendedoresController = require('./controllers/vendedores');
-// const loginController = require('./controllers/login');
-// const clientesController = require('./controllers/clientes');
 
 // Gerar a aplicação
 const app = express();
 
 //Middlewares
 app.use(bodyParser.json());
-// app.use('/vendedores', vendedoresController);
-// app.use('/login', loginController);
-// app.use('/clientes', clientesController);
 
 //Conectar ao bd
 mongoose.connect("mongodb://localhost/emprestimo");
@@ -61,27 +55,12 @@ app.post('/login', (request, response) => {
     });
 });
 app.post('/simulacao', expressJwt({secret: 'insomnia'}), (request, response) => {
-    let valor = request.body.valor;
-    let parcelas = request.body.parcelas;
-    let idUsuario = request.user._id;
-    let taxaJuros = 0.08; //juros simples
-
-    ClienteSchema.findById(idUsuario, (error, cliente) => {
-        if(error) {response.sendStatus(400); return;}
-        let renda = cliente.renda;
-        if(parcelas <= 0 || valor < 0 || isNaN(valor) | isNaN(parcelas)){
-            response.sendStatus(403);
-            return;
-        }else if(parcelas > 6 || valor > renda * 0.30){
-            response.sendStatus(401);
-            return;
-        }else{
-            valorParcela = {
-                parcela: (valor*(1 + taxaJuros))/parcelas
-            };
-            response.status(200).send(valorParcela);
-        }
-    });
+    let rc = SimularEmprestimo(request, response);
+    console.log(rc);
+    if (rc > 0)
+        response.status(200).send(rc);
+    else
+        response.sendStatus(401);
 });
 app.post('/emprestimo', expressJwt({secret: 'insomnia'}), (request, response) => {
     let valor = request.body.valor;
@@ -119,24 +98,26 @@ app.post('/emprestimo', expressJwt({secret: 'insomnia'}), (request, response) =>
     });
 });
 
-let SimularEmprestimo = (request, response) => {
+function SimularEmprestimo(request, response){
     let valor = request.body.valor;
     let parcelas = request.body.parcelas;
     let idUsuario = request.user._id;
     let taxaJuros = 0.08; //juros simples
 
     ClienteSchema.findById(idUsuario, (error, cliente) => {
-        if(error) response.sendStatus(400);
+        if(error){
+          return -400;  
+        }
         let renda = cliente.renda;
         if(parcelas <= 0 || valor < 0 || isNaN(valor) | isNaN(parcelas)){
-            return response.sendStatus(403);
+            return -403;
         }else if(parcelas > 6 || valor > renda * 0.30){
-            return response.sendStatus(401);
+            return -401;
         }else{
-            valorParcela = {
-                parcela: (valor*(1 + taxaJuros))/parcelas
-            };
-            return response.status(200).send(valorParcela);
+            //processamento ok!
+            let valorParcela = (valor*(1 + taxaJuros))/parcelas;
+            console.log("Processamento ok: "+valorParcela);
+            return valorParcela;
         }
     });
 }
