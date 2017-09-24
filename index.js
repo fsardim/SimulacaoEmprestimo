@@ -55,12 +55,21 @@ app.post('/login', (request, response) => {
     });
 });
 app.post('/simulacao', expressJwt({secret: 'insomnia'}), (request, response) => {
-    let rc = SimularEmprestimo(request, response);
-    console.log(rc);
-    if (rc > 0)
-        response.status(200).send(rc);
-    else
-        response.sendStatus(401);
+    let valor = request.body.valor;
+    let parcelas = request.body.parcelas;
+    let idUsuario = request.user._id;
+    let taxaJuros = 0.08; //juros simples
+
+    ClienteSchema.findById(idUsuario, (error, cliente) => {
+        if(error) {response.sendStatus(400); return;}
+        let renda = cliente.renda;
+        let simulacao = SimularEmprestimo(valor, parcelas, renda, taxaJuros);
+        
+        if (simulacao.ehValida)
+            response.status(200).send(simulacao);
+        else
+            response.status(401).send(simulacao);
+    });
 });
 app.post('/emprestimo', expressJwt({secret: 'insomnia'}), (request, response) => {
     let valor = request.body.valor;
@@ -71,58 +80,48 @@ app.post('/emprestimo', expressJwt({secret: 'insomnia'}), (request, response) =>
     ClienteSchema.findById(idUsuario, (error, cliente) => {
         if(error) {response.sendStatus(400); return;}
         let renda = cliente.renda;
-        if(parcelas <= 0 || valor < 0 || isNaN(valor) | isNaN(parcelas)){
-            response.sendStatus(403);
-            return;
-        }else if(parcelas > 6 || valor > renda * 0.30){
-            response.sendStatus(401);
-            return;
-        }else{
-            let valorParcela = {
-                parcela: (valor*(1 + taxaJuros))/parcelas
-            };
+        let simulacao = SimularEmprestimo(valor, parcelas, renda, taxaJuros);
+        
+        if(simulacao.ehValida){
             let dadosEmprestimo = {
                 valor: valor,
                 parcelas: parcelas,
                 data: new Date()
             }
-            cliente.emprestimos = dadosEmprestimo;
+            //inclui o novo empréstimo no set de empréstimos do cliente
+            cliente.emprestimos.addToSet(dadosEmprestimo);
+
             ClienteSchema.findByIdAndUpdate(idUsuario, cliente, (error, resposta) => {
-                if(error){
-                    response.sendStatus(400);
-                    return;
-                }
-                response.status(200).send(valorParcela);
+                if(error){response.sendStatus(400); return;}
+                response.status(200).send(cliente);
             });
+        }else{
+            response.status(401).send(simulacao);
         }
     });
 });
 
-function SimularEmprestimo(request, response){
-    let valor = request.body.valor;
-    let parcelas = request.body.parcelas;
-    let idUsuario = request.user._id;
-    let taxaJuros = 0.08; //juros simples
-
-    ClienteSchema.findById(idUsuario, (error, cliente) => {
-        if(error){
-          return -400;  
-        }
-        let renda = cliente.renda;
-        if(parcelas <= 0 || valor < 0 || isNaN(valor) | isNaN(parcelas)){
-            return -403;
-        }else if(parcelas > 6 || valor > renda * 0.30){
-            return -401;
-        }else{
-            //processamento ok!
-            let valorParcela = (valor*(1 + taxaJuros))/parcelas;
-            console.log("Processamento ok: "+valorParcela);
-            return valorParcela;
-        }
-    });
+function SimularEmprestimo(valor, parcelas, renda, taxaJuros){
+    resposta = {
+        ehValida: false,
+        msg: "",
+        valorParcela: 0
+    };
+    if(parcelas <= 0 || valor < 0 || isNaN(valor) | isNaN(parcelas)){
+        resposta.msg = "Valor inválido";
+        return resposta;
+    }else if(parcelas > 6 || valor > renda * 0.30){
+        resposta.msg = "Valor de parcelas inválido ou valor do empréstimo supera 30% da renda";
+        return resposta;
+    }else{
+        resposta.ehValida = true;
+        resposta.msg = "Simulação ok!";
+        resposta.valorParcela = (valor*(1 + taxaJuros))/parcelas;
+        return resposta;
+    }
 }
 
 //servidor
 app.listen(80, () => {
     console.log("Servidor rodando na porta 80");
-})
+});
